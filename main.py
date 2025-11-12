@@ -19,59 +19,68 @@ def load_config():
                 if not line or line.startswith('#'):
                     continue
                 
-                if line.startswith('package_name:'):
+                if line.startswith('package:'):
                     value = parse_value(line)
                     if value:
-                        config['package_name'] = value
-                        print(f"package_name: {value}")
+                        config['package'] = value
+                        print(f"package: {value}")
                     else:
-                        print("Ошибка: Пустое значение поля package_name")
+                        print("Ошибка: Пустое значение поля package")
                         return None
                         
-                elif line.startswith('repository_url:'):
+                elif line.startswith('repository:'):
                     value = parse_value(line)
                     if value:
-                        config['repository_url'] = value
-                        print(f"repository_url: {value}")
+                        config['repository'] = value
+                        print(f"repository: {value}")
                     else:
-                        print("Ошибка: Пустое значение поля repository_url")
+                        print("Ошибка: Пустое значение поля repository")
                         return None
                         
-                elif line.startswith('test_repository_mode:'):
+                elif line.startswith('mode:'):
+                    value = parse_value(line)
+                    if value in ['remote', 'local', 'test']:
+                        config['mode'] = value
+                        print(f"mode: {value}")
+                    else:
+                        print("Ошибка: Некорректный режим работы")
+                        return None
+                        
+                elif line.startswith('output_file:'):
+                    value = parse_value(line)
+                    if value:
+                        config['output_file'] = value
+                        print(f"output_file: {value}")
+                    else:
+                        print("Ошибка: Пустое значение поля output_file")
+                        return None
+                        
+                elif line.startswith('ascii_tree:'):
                     value = parse_value(line).lower()
                     if value in ['true', 'false']:
-                        config['test_repository_mode'] = value == 'true'
-                        print(f"test_repository_mode: {value}")
+                        config['ascii_tree'] = value == 'true'
+                        print(f"ascii_tree: {value}")
                     else:
-                        print("Ошибка: Некорректное значение test_repository_mode")
+                        print("Ошибка: Некорректное значение ascii_tree")
                         return None
                         
-                elif line.startswith('output_image_filename:'):
+                elif line.startswith('max_depth:'):
+                    value = parse_value(line)
+                    if value.isdigit() and int(value) > 0:
+                        config['max_depth'] = int(value)
+                        print(f"max_depth: {value}")
+                    else:
+                        print("Ошибка: Некорректное значение max_depth")
+                        return None
+                        
+                elif line.startswith('filter:'):
                     value = parse_value(line)
                     if value:
-                        config['output_image_filename'] = value
-                        print(f"output_image_filename: {value}")
+                        config['filter'] = value
+                        print(f"filter: {value}")
                     else:
-                        print("Ошибка: Пустое значение поля output_image_filename")
-                        return None
-                        
-                elif line.startswith('ascii_tree_mode:'):
-                    value = parse_value(line).lower()
-                    if value in ['true', 'false']:
-                        config['ascii_tree_mode'] = value == 'true'
-                        print(f"ascii_tree_mode: {value}")
-                    else:
-                        print("Ошибка: Некорректное значение ascii_tree_mode")
-                        return None
-                        
-                elif line.startswith('filter_substring:'):
-                    value = parse_value(line)
-                    if value:
-                        config['filter_substring'] = value
-                        print(f"filter_substring: {value}")
-                    else:
-                        config['filter_substring'] = ""
-                        print("filter_substring: фильтр не задан")
+                        config['filter'] = ""
+                        print("filter: фильтр не задан")
         
         print("=== Конфигурация загружена успешно ===\n")
         return config
@@ -108,16 +117,21 @@ def get_nuget_dependencies(package_name, repository_url):
             return []
         
         # Ищем пакет
+        print(f"Поиск пакета {package_name}...")
         search_response = requests.get(f"{search_url}?q=packageid:{package_name}", timeout=10)
         search_response.raise_for_status()
         
         search_data = search_response.json()
         
         if not search_data.get('data'):
-            print(f"Ошибка: Пакет '{package_name}' не найден")
+            print(f"Ошибка: Пакет '{package_name}' не найден в репозитории")
+            print("Попробуйте использовать существующий пакет, например: 'AutoMapper', 'Newtonsoft.Json', 'Serilog'")
             return []
         
         package_info = search_data['data'][0]
+        package_title = package_info.get('title', package_name)
+        print(f"Найден пакет: {package_title}")
+        
         versions = package_info.get('versions', [])
         
         if not versions:
@@ -126,6 +140,9 @@ def get_nuget_dependencies(package_name, repository_url):
         
         # Берем последнюю версию
         latest_version = versions[-1]
+        version_number = latest_version.get('version', 'Unknown')
+        print(f"Анализ версии: {version_number}")
+        
         version_url = latest_version['@id']
         
         # Получаем информацию о версии
@@ -165,8 +182,8 @@ def main():
     
     # Этап 2: Получение зависимостей
     dependencies = get_nuget_dependencies(
-        config['package_name'], 
-        config['repository_url']
+        config['package'], 
+        config['repository']
     )
     
     # Вывод результатов
