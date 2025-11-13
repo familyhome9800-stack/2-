@@ -2,8 +2,6 @@ def parse_value(line):
     return line.split(':', 1)[1].strip().strip('"\'') if ':' in line else ""
 
 def main():
-    """Основная функция - только Этап 1"""
-    
     print("=== Этап 1: Конфигурация ===")
     print("Параметры файла config.yaml:")
     
