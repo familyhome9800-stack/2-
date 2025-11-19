@@ -3,7 +3,6 @@ def parse_yaml(content):
     lines = content.split('\n')
     result = {}
     current_key = None
-    current_list = None
     
     for line in lines:
         line = line.strip()
@@ -13,22 +12,25 @@ def parse_yaml(content):
         if line.endswith(':'):
             current_key = line[:-1].strip()
             result[current_key] = []
-            current_list = result[current_key]
         elif line.startswith('-'):
-            if current_list is not None:
+            if current_key is not None:
                 item = line[1:].strip()
-                current_list.append(item)
+                result[current_key].append(item)
     
     return result
 
-# Построение графа зависимостей с помощью DFS
+# Построение графа зависимостей
 def build_dependency_graph(data, exclude_pattern=None):
     graph = {}
     
     for package, deps in data.items():
         if exclude_pattern and exclude_pattern in package:
             continue
-        graph[package] = [dep for dep in deps if not exclude_pattern or exclude_pattern not in dep]
+        filtered_deps = []
+        for dep in deps:
+            if not exclude_pattern or exclude_pattern not in dep:
+                filtered_deps.append(dep)
+        graph[package] = filtered_deps
     
     return graph
 
@@ -62,7 +64,7 @@ def dfs_with_cycles_detection(graph, start_node, visited=None, recursion_stack=N
     recursion_stack.remove(start_node)
     return cycles
 
-# Получение всех зависимостей (транзитивное замыкание)
+# Получение всех транзитивных зависимостей
 def get_all_dependencies(graph, package, exclude_pattern=None):
     if package not in graph:
         return set()
@@ -76,111 +78,233 @@ def get_all_dependencies(graph, package, exclude_pattern=None):
         for dep in graph[node]:
             if exclude_pattern and exclude_pattern in dep:
                 continue
-            dfs(dep)
+            if dep in graph:
+                dfs(dep)
     
-    dfs(package)
-    visited.discard(package)
+    for dep in graph[package]:
+        if exclude_pattern and exclude_pattern in dep:
+            continue
+        dfs(dep)
+    
     return visited
+
+# Валидация имен пакетов (только большие латинские буквы)
+def validate_package_names(data):
+    for package, deps in data.items():
+        if not package.isupper() or not package.isalpha():
+            return False, f"Неверное имя пакета: {package}"
+        for dep in deps:
+            if not dep.isupper() or not dep.isalpha():
+                return False, f"Неверное имя зависимости: {dep}"
+    return True, "OK"
 
 # Основная функция
 def main():
     print("=== Анализатор зависимостей пакетов ===")
     print("Режимы работы:")
-    print("1 - Тестовый режим (файл)")
-    print("2 - Продакшен режим (URL)")
+    print("1 - Тестовый режим (встроенные тесты)")
+    print("2 - Файловый режим (пользовательский файл)")
     
     mode = input("Выберите режим: ").strip()
     
     if mode == "1":
-        file_path = input("Введите путь к файлу: ").strip()
-        
-        try:
-            with open(file_path, 'r') as f:
-                content = f.read()
-            
-            data = parse_yaml(content)
-            print("\nЗагруженные данные:")
-            for pkg, deps in data.items():
-                print(f"{pkg}: {deps}")
-            
-            exclude_pattern = input("\nВведите подстроку для исключения (или Enter чтобы пропустить): ").strip()
-            if exclude_pattern == "":
-                exclude_pattern = None
-            
-            graph = build_dependency_graph(data, exclude_pattern)
-            
-            print("\nГраф зависимостей:")
-            for node, deps in graph.items():
-                print(f"{node} -> {deps}")
-            
-            # Проверка циклов
-            all_cycles = []
-            visited = set()
-            for node in graph:
-                if node not in visited:
-                    cycles = dfs_with_cycles_detection(graph, node, set(), set(), [], [])
-                    all_cycles.extend(cycles)
-                    visited.add(node)
-            
-            if all_cycles:
-                print("\nОбнаружены циклические зависимости:")
-                for cycle in all_cycles:
-                    print(f"Цикл: {' -> '.join(cycle)} -> {cycle[0]}")
-            else:
-                print("\nЦиклические зависимости не обнаружены")
-            
-            # Транзитивные зависимости
-            print("\nТранзитивные зависимости:")
-            for package in graph:
-                all_deps = get_all_dependencies(graph, package, exclude_pattern)
-                if all_deps:
-                    print(f"{package}: {sorted(list(all_deps))}")
-            
-        except Exception as e:
-            print(f"Ошибка: {e}")
-    
+        run_test_cases()
     elif mode == "2":
-        print("Режим URL будет реализован позже")
+        run_file_mode()
     else:
         print("Неверный режим")
 
-# Тестовые данные
-def create_test_file():
-    test_data = """
+# Режим работы с файлом
+def run_file_mode():
+    file_path = input("Введите путь к файлу описания графа: ").strip()
+    
+    try:
+        with open(file_path, 'r') as f:
+            content = f.read()
+        
+        data = parse_yaml(content)
+        
+        # Валидация имен пакетов
+        valid, message = validate_package_names(data)
+        if not valid:
+            print(f"Ошибка валидации: {message}")
+            return
+        
+        print("\nЗагруженные данные:")
+        for pkg, deps in data.items():
+            print(f"{pkg}: {deps}")
+        
+        exclude_pattern = input("\nВведите подстроку для исключения (или Enter чтобы пропустить): ").strip()
+        if exclude_pattern == "":
+            exclude_pattern = None
+        
+        graph = build_dependency_graph(data, exclude_pattern)
+        
+        print("\nГраф зависимостей:")
+        for node, deps in graph.items():
+            print(f"{node} -> {deps}")
+        
+        # Проверка циклов
+        all_cycles = []
+        visited = set()
+        for node in graph:
+            if node not in visited:
+                cycles = dfs_with_cycles_detection(graph, node, set(), set(), [], [])
+                all_cycles.extend(cycles)
+                visited.add(node)
+        
+        if all_cycles:
+            print("\nОбнаружены циклические зависимости:")
+            for cycle in all_cycles:
+                print(f"Цикл: {' -> '.join(cycle)} -> {cycle[0]}")
+        else:
+            print("\nЦиклические зависимости не обнаружены")
+        
+        # Транзитивные зависимости
+        print("\nТранзитивные зависимости:")
+        for package in sorted(graph.keys()):
+            all_deps = get_all_dependencies(graph, package, exclude_pattern)
+            if all_deps:
+                print(f"{package}: {sorted(list(all_deps))}")
+            else:
+                print(f"{package}: нет зависимостей")
+        
+    except Exception as e:
+        print(f"Ошибка: {e}")
+
+# Тестовые случаи
+def run_test_cases():
+    print("\n" + "="*50)
+    print("ТЕСТ 1: Простой граф без циклов")
+    print("="*50)
+    test1 = {
+        'A': ['B', 'C'],
+        'B': ['D'],
+        'C': ['D'],
+        'D': []
+    }
+    run_test(test1, "TEST1")
+    
+    print("\n" + "="*50)
+    print("ТЕСТ 2: Граф с циклическими зависимостями")
+    print("="*50)
+    test2 = {
+        'A': ['B'],
+        'B': ['C'],
+        'C': ['A']
+    }
+    run_test(test2, "TEST2")
+    
+    print("\n" + "="*50)
+    print("ТЕСТ 3: Сложный граф с исключениями")
+    print("="*50)
+    test3 = {
+        'A': ['B', 'C'],
+        'B': ['D', 'EXCLUDE_ME'],
+        'C': ['E'],
+        'D': ['F'],
+        'E': ['B'],
+        'F': [],
+        'EXCLUDE_ME': ['A']
+    }
+    run_test(test3, "TEST3", "EXCLUDE")
+
+# Запуск теста
+def run_test(data, test_name, exclude_pattern=None):
+    print(f"\nДанные {test_name}:")
+    for pkg, deps in data.items():
+        print(f"{pkg}: {deps}")
+    
+    graph = build_dependency_graph(data, exclude_pattern)
+    
+    print(f"\nГраф {test_name}:")
+    for node, deps in graph.items():
+        print(f"{node} -> {deps}")
+    
+    # Проверка циклов
+    all_cycles = []
+    visited = set()
+    for node in graph:
+        if node not in visited:
+            cycles = dfs_with_cycles_detection(graph, node, set(), set(), [], [])
+            all_cycles.extend(cycles)
+            visited.add(node)
+    
+    if all_cycles:
+        print(f"\nОбнаружены циклические зависимости в {test_name}:")
+        for cycle in all_cycles:
+            print(f"Цикл: {' -> '.join(cycle)} -> {cycle[0]}")
+    else:
+        print(f"\nЦиклические зависимости в {test_name} не обнаружены")
+    
+    # Транзитивные зависимости
+    print(f"\nТранзитивные зависимости {test_name}:")
+    for package in sorted(graph.keys()):
+        all_deps = get_all_dependencies(graph, package, exclude_pattern)
+        if all_deps:
+            print(f"{package}: {sorted(list(all_deps))}")
+        else:
+            print(f"{package}: нет зависимостей")
+
+# Создание тестовых файлов
+def create_test_files():
+    # Простой граф без циклов
+    test1_content = """
 A:
   - B
   - C
-
 B:
-  - C
   - D
-
 C:
-  - E
-
+  - D
 D:
-  - A
-  - F
-
-E:
-  - B
-
-F:
-  - G
-
-G:
-  - H
-
-H:
 """
     
-    with open('test_repo.yaml', 'w') as f:
-        f.write(test_data)
-    print("Создан тестовый файл: test_repo.yaml")
+    # Граф с циклом
+    test2_content = """
+A:
+  - B
+B:
+  - C
+C:
+  - A
+"""
+    
+    # Сложный граф с исключениями
+    test3_content = """
+A:
+  - B
+  - C
+B:
+  - D
+  - EXCLUDE_ME
+C:
+  - E
+D:
+  - F
+E:
+  - B
+F:
+EXCLUDE_ME:
+  - A
+"""
+    
+    with open('test1_simple.yaml', 'w') as f:
+        f.write(test1_content)
+    with open('test2_cycle.yaml', 'w') as f:
+        f.write(test2_content)
+    with open('test3_complex.yaml', 'w') as f:
+        f.write(test3_content)
+    
+    print("Созданы тестовые файлы:")
+    print("- test1_simple.yaml (простой граф без циклов)")
+    print("- test2_cycle.yaml (граф с циклическими зависимостями)")
+    print("- test3_complex.yaml (сложный граф с пакетами для исключения)")
 
 # Демонстрация
 if __name__ == "__main__":
-    create_test_file()
-    print("Демонстрация работы системы:")
-    print("=" * 50)
+    create_test_files()
+    print("\n" + "="*60)
+    print("ДЕМОНСТРАЦИЯ РАБОТЫ СИСТЕМЫ АНАЛИЗА ЗАВИСИМОСТЕЙ")
+    print("="*60)
     main()
