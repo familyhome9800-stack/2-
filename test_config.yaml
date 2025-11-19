@@ -1,7 +1,20 @@
-package: A
-repository: test_graph.txt
-mode: test
-output_file: test_dependencies.mmd
-ascii_tree: true
-filter: 
-version: 
+Package: A
+Dependencies: B, C
+
+Package: B
+Dependencies: C, D
+
+Package: C
+Dependencies: E
+
+Package: D
+Dependencies: A, F
+
+Package: E
+Dependencies: 
+
+Package: F
+Dependencies: G
+
+Package: G
+Dependencies:
