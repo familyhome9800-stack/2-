@@ -1,20 +1,25 @@
-Package: A
-Dependencies: B, C
+A:
+  - B
+  - C
 
-Package: B
-Dependencies: C, D
+B:
+  - C
+  - D
 
-Package: C
-Dependencies: E
+C:
+  - E
 
-Package: D
-Dependencies: A, F
+D:
+  - A
+  - F
 
-Package: E
-Dependencies: 
+E:
+  - B
 
-Package: F
-Dependencies: G
+F:
+  - G
 
-Package: G
-Dependencies:
+G:
+  - H
+
+H:
