@@ -1,0 +1,7 @@
+package: A
+repository: test_graph.txt
+mode: test
+output_file: test_dependencies.mmd
+ascii_tree: true
+filter: 
+version: 
