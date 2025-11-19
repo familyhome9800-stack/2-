@@ -2,7 +2,7 @@ def parse_value(line):
     return line.split(':', 1)[1].strip().strip('"\'') if ':' in line else ""
 
 def read_file(filename):
-    """Чтение файла без использования библиотек"""
+    """Чтение файла"""
     try:
         file = open(filename, 'r', encoding='utf-8')
         content = file.read()
@@ -10,6 +10,16 @@ def read_file(filename):
         return content
     except:
         return None
+
+def write_file(filename, content):
+    """Запись в файл"""
+    try:
+        file = open(filename, 'w', encoding='utf-8')
+        file.write(content)
+        file.close()
+        return True
+    except:
+        return False
 
 def parse_config(filename):
     """Парсинг конфигурационного файла"""
@@ -37,7 +47,6 @@ def parse_config(filename):
         elif line.startswith('filter:'):
             config['filter'] = parse_value(line)
     
-    # Установка значений по умолчанию
     if 'mode' not in config:
         config['mode'] = 'remote'
     if 'filter' not in config:
@@ -66,7 +75,7 @@ def parse_test_repository(filepath):
         elif line.startswith('Dependencies:'):
             deps_str = line.split(':', 1)[1].strip()
             if deps_str and current_package:
-                deps = [dep.strip() for dep in deps_str.split(',')]
+                deps = [dep.strip() for dep in deps_str.split(',') if dep.strip()]
                 dependencies[current_package] = deps
     
     return dependencies
@@ -74,17 +83,13 @@ def parse_test_repository(filepath):
 def get_direct_dependencies(package_name, repository_url, mode):
     """Получить прямые зависимости пакета"""
     if mode == 'test':
-        # Режим тестирования - используем файл тестового репозитория
         deps_data = parse_test_repository(repository_url)
         if deps_data and package_name in deps_data:
             return deps_data[package_name]
         return []
     
-    # Для реального режима эмулируем данные (без библиотек для HTTP запросов)
-    # В реальном проекте здесь был бы HTTP запрос к NuGet API
     print(f"Эмуляция получения зависимостей для {package_name}")
     
-    # Эмулируем некоторые известные зависимости для демонстрации
     sample_dependencies = {
         "Newtonsoft.Json": ["System.Runtime", "System.Xml"],
         "EntityFramework": ["System.ComponentModel.DataAnnotations", "System.Data"],
@@ -108,23 +113,19 @@ def build_dependency_graph(start_package, repository_url, mode, filter_str, visi
     
     visited[start_package] = True
     
-    # Пропускаем пакеты, содержащие подстроку фильтра
     if filter_str and filter_str in start_package:
         graph[start_package] = []
         return graph
     
-    # Получаем прямые зависимости
     direct_deps = get_direct_dependencies(start_package, repository_url, mode)
     graph[start_package] = []
     
     for dep in direct_deps:
-        # Пропускаем зависимости, содержащие подстроку фильтра
         if filter_str and filter_str in dep:
             continue
         
         graph[start_package].append(dep)
         
-        # Рекурсивно строим граф для зависимости
         if dep not in visited:
             build_dependency_graph(dep, repository_url, mode, filter_str, visited, graph)
     
@@ -159,6 +160,17 @@ def detect_cycles(graph):
     
     return list(cycles)
 
+def save_graph_to_file(graph, filename):
+    """Сохранение графа в файл"""
+    content = "Граф зависимостей:\n"
+    for package, deps in graph.items():
+        content += f"{package} -> {deps}\n"
+    
+    if write_file(filename, content):
+        print(f"Граф сохранен в файл: {filename}")
+    else:
+        print("Ошибка при сохранении графа")
+
 def main():
     filename = input("Введите имя файла yaml: ")
     
@@ -169,7 +181,6 @@ def main():
         print("Ошибка: Не удалось прочитать конфигурационный файл")
         return
     
-    # Вывод параметров конфигурации
     print(f"Пакет: {config.get('package', 'Не задан')}")
     print(f"Репозиторий: {config.get('repository', 'Не задан')}")
     print(f"Режим: {config.get('mode', 'remote')}")
@@ -187,7 +198,6 @@ def main():
         print("Ошибка: Не задано имя пакета")
         return
     
-    # Получаем прямые зависимости
     direct_deps = get_direct_dependencies(package_name, repository_url, mode)
     print(f"Прямые зависимости пакета {package_name}:")
     for dep in direct_deps:
@@ -195,7 +205,6 @@ def main():
     
     print("\n=== Этап 3: Основные операции ===")
     
-    # Строим полный граф зависимостей
     filter_str = config.get('filter', '')
     dependency_graph = build_dependency_graph(package_name, repository_url, mode, filter_str)
     
@@ -203,14 +212,16 @@ def main():
     for package, deps in dependency_graph.items():
         print(f"  {package} -> {deps}")
     
-    # Обнаруживаем циклические зависимости
     cycles = detect_cycles(dependency_graph)
     if cycles:
         print(f"Обнаружены циклические зависимости: {cycles}")
     else:
         print("Циклические зависимости не обнаружены")
     
-    # Демонстрация работы с тестовым репозиторием
+    # Сохранение результатов
+    output_file = config.get('output_file', 'dependencies.txt')
+    save_graph_to_file(dependency_graph, output_file)
+    
     if mode == 'test':
         print("\nДемонстрация работы с тестовым репозиторием:")
         test_data = parse_test_repository(repository_url)
