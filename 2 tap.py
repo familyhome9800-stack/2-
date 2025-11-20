@@ -6,14 +6,11 @@ def parse_yaml_value(line):
     if ':' not in line:
         return ""
     
-    # Разделяем по первому двоеточию
-    key, value = line.split(':', 1)
-    value = value.strip()
+    parts = line.split(':', 1)
+    value = parts[1].strip()
     
-    # Убираем кавычки если есть
-    if value.startswith('"') and value.endswith('"'):
-        value = value[1:-1]
-    elif value.startswith("'") and value.endswith("'"):
+    # Убираем кавычки если они есть
+    if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
         value = value[1:-1]
     
     return value
@@ -45,62 +42,65 @@ def extract_dependencies(nuspec_xml):
 
 print("Параметры файла:")
 with open("config.yaml", "r", encoding="utf-8") as file:
-    # Инициализируем переменные значениями по умолчанию
-    name_packege = ""
-    url = ""
-    mode = ""
-    version_packege = ""
-    output_file = ""
-    ascii_tree = False
-    max_depth = ""
-    filter_value = ""
+    lines = file.readlines()
     
-    for line in file:
+    # Парсим YAML файл
+    config = {}
+    for line in lines:
         line = line.strip()
         if not line or line.startswith('#'):
             continue
-        
-        # Парсим только конкретные поля из заданного формата
+            
         if line.startswith('package:'):
-            name_packege = parse_yaml_value(line)
+            config['package'] = parse_yaml_value(line)
         elif line.startswith('repository:'):
-            url = parse_yaml_value(line)
+            config['repository'] = parse_yaml_value(line)
         elif line.startswith('mode:'):
-            mode = parse_yaml_value(line)
+            config['mode'] = parse_yaml_value(line)
+        elif line.startswith('version:'):
+            config['version'] = parse_yaml_value(line)
         elif line.startswith('output_file:'):
-            output_file = parse_yaml_value(line)
+            config['output_file'] = parse_yaml_value(line)
         elif line.startswith('ascii_tree:'):
-            ascii_tree_value = parse_yaml_value(line).lower()
-            ascii_tree = ascii_tree_value == 'true'
-        elif line.startswith('max_depth:'):
-            max_depth = parse_yaml_value(line)
+            value = parse_yaml_value(line).lower()
+            config['ascii_tree'] = value == 'true'
         elif line.startswith('filter:'):
-            filter_value = parse_yaml_value(line)
+            config['filter'] = parse_yaml_value(line)
+        elif line.startswith('max_depth:'):
+            config['max_depth'] = parse_yaml_value(line)
 
-# Вывод параметров в том же формате что и в оригинальном коде
-print("Имя пакета:", name_packege)
-print("URL:", url)
-print("Режим:", mode)
-print("Выходной файл:", output_file)
-print("ASCII дерево:", ascii_tree)
-print("Макс. глубина:", max_depth)
-print("Фильтр:", filter_value)
+    # Извлекаем значения с проверкой на наличие
+    name_package = config.get('package', '')
+    url = config.get('repository', '')
+    mode = config.get('mode', 'remote')
+    version_package = config.get('version', '')
+    filter_value = config.get('filter', '')
+    output_file = config.get('output_file', '')
+    ascii_tree = config.get('ascii_tree', False)
+    max_depth = config.get('max_depth', '')
+
+    print("Имя пакета:", name_package)
+    print("URL репозитория:", url)
+    print("Режим:", mode)
+    print("Версия:", version_package)
+    print("Фильтр:", filter_value)
+    print("Выходной файл:", output_file)
+    print("ASCII дерево:", ascii_tree)
+    print("Макс. глубина:", max_depth)
 
 print("\n=== Этап 2: Сбор данных о зависимостях ===")
 
-# Для этапа 2 нам нужны только package, version и repository
-# Но в заданном формате нет version, поэтому используем фиксированную версию
-version_packege = "1.0.0"  # версия по умолчанию
-
-if not name_packege or not url:
-    print("Ошибка: Не заданы обязательные параметры (package, repository)")
-else:
-    nuspec_content = get_nuspec(name_packege, version_packege, url)
+if name_package and version_package and url:
+    nuspec_content = get_nuspec(name_package, version_package, url)
     if nuspec_content:
         dependencies = extract_dependencies(nuspec_content)
         if dependencies:
-            print(f"\nПрямые зависимости пакета {name_packege} ({version_packege}):")
+            print(f"\nПрямые зависимости пакета {name_package} ({version_package}):")
             for dep_id, dep_ver in dependencies:
                 print(f" - {dep_id} ({dep_ver})")
         else:
-            print(f"Пакет {name_packege} не имеет прямых зависимостей.")
+            print(f"Пакет {name_package} не имеет прямых зависимостей.")
+    else:
+        print(f"Не удалось загрузить данные для пакета {name_package}")
+else:
+    print("Ошибка: Не все обязательные параметры заданы (package, version, repository)")
