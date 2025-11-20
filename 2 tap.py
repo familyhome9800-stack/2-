@@ -1,11 +1,16 @@
+import urllib.request
+import xml.etree.ElementTree as ET
+
 def parse_yaml_value(line):
     """Парсинг значения из YAML строки"""
     if ':' not in line:
         return ""
     
+    # Разделяем по первому двоеточию
     key, value = line.split(':', 1)
     value = value.strip()
     
+    # Убираем кавычки если есть
     if value.startswith('"') and value.endswith('"'):
         value = value[1:-1]
     elif value.startswith("'") and value.endswith("'"):
@@ -14,158 +19,88 @@ def parse_yaml_value(line):
     return value
 
 def get_nuspec(package_name, version, url):
-    """Получение nuspec файла с правильным URL"""
-    # Формируем правильный URL для NuGet репозитория
-    if url.endswith('/'):
-        url = url[:-1]
-    
-    # Правильный формат URL для NuGet
-    nuspec_url = f"{url}/package/{package_name}/{version}"
-    print(f"Попытка загрузки с: {nuspec_url}")
-    
+    base_url = f"{url}{package_name.lower()}/{version}/{package_name.lower()}.nuspec"
+    print(f"Загрузка данных с {base_url} ...")
     try:
-        # Имитируем успешную загрузку для демонстрации
-        print(f"Имитация загрузки пакета {package_name} версии {version}")
-        
-        # Возвращаем тестовые данные вместо реального запроса
-        test_nuspec = f'''<?xml version="1.0" encoding="utf-8"?>
-<package>
-  <metadata>
-    <id>{package_name}</id>
-    <version>{version}</version>
-    <dependencies>
-      <dependency id="Newtonsoft.Json" version="13.0.1" />
-      <dependency id="System.Text.Json" version="7.0.0" />
-    </dependencies>
-  </metadata>
-</package>'''
-        return test_nuspec
-        
+        with urllib.request.urlopen(base_url) as response:
+            data = response.read().decode("utf-8")
+        return data
     except Exception as e:
         print(f"Ошибка при загрузке пакета: {e}")
         return None
 
 def extract_dependencies(nuspec_xml):
-    """Извлечение зависимостей из XML без использования ET"""
+    try:
+        root = ET.fromstring(nuspec_xml)
+    except Exception as e:
+        print(f"Ошибка при чтении XML: {e}")
+        return []
+
     deps = []
-    
-    # Простой парсинг XML строкой
-    lines = nuspec_xml.split('\n')
-    in_dependencies = False
-    
-    for line in lines:
-        line = line.strip()
-        
-        if '<dependencies>' in line:
-            in_dependencies = True
-            continue
-        elif '</dependencies>' in line:
-            in_dependencies = False
-            continue
-            
-        if in_dependencies and 'dependency id=' in line:
-            # Извлекаем атрибуты из строки типа: <dependency id="Newtonsoft.Json" version="13.0.1" />
-            dep_line = line.replace('<dependency', '').replace('/>', '').replace('>', '').strip()
-            parts = dep_line.split(' ')
-            
-            dep_id = ""
-            dep_version = ""
-            
-            for part in parts:
-                if part.startswith('id="'):
-                    dep_id = part[4:-1]  # Убираем id=" и "
-                elif part.startswith('version="'):
-                    dep_version = part[9:-1]  # Убираем version=" и "
-            
-            if dep_id:
-                deps.append((dep_id, dep_version))
-    
+    for dependency in root.findall(".//{*}dependency"):
+        dep_id = dependency.attrib.get("id", "—")
+        dep_version = dependency.attrib.get("version", "—")
+        deps.append((dep_id, dep_version))
     return deps
 
-print("=== Этап 1: Чтение конфигурации ===")
+print("Параметры файла:")
+with open("config.yaml", "r", encoding="utf-8") as file:
+    # Инициализируем переменные значениями по умолчанию
+    name_packege = ""
+    url = ""
+    mode = ""
+    version_packege = ""
+    output_file = ""
+    ascii_tree = False
+    max_depth = ""
+    filter_value = ""
+    
+    for line in file:
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        
+        # Парсим только конкретные поля из заданного формата
+        if line.startswith('package:'):
+            name_packege = parse_yaml_value(line)
+        elif line.startswith('repository:'):
+            url = parse_yaml_value(line)
+        elif line.startswith('mode:'):
+            mode = parse_yaml_value(line)
+        elif line.startswith('output_file:'):
+            output_file = parse_yaml_value(line)
+        elif line.startswith('ascii_tree:'):
+            ascii_tree_value = parse_yaml_value(line).lower()
+            ascii_tree = ascii_tree_value == 'true'
+        elif line.startswith('max_depth:'):
+            max_depth = parse_yaml_value(line)
+        elif line.startswith('filter:'):
+            filter_value = parse_yaml_value(line)
 
-# Инициализация переменных
-name_package = ""
-url = ""
-mode = ""
-version_package = ""
-output_file = ""
-ascii_tree = False
-max_depth = ""
-filter_value = ""
-
-try:
-    with open("config.yaml", "r", encoding="utf-8") as file:
-        for line in file:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            
-            if line.startswith('package:'):
-                name_package = parse_yaml_value(line)
-            elif line.startswith('repository:'):
-                url = parse_yaml_value(line)
-            except Exception as e:
-    print(f"Ошибка при чтении файла: {e}")
-
-# Вывод параметров
-print("Имя пакета:", name_package)
-print("URL репозитория:", url)
-print("Режим:", mode if mode else "не задан")
-print("Выходной файл:", output_file if output_file else "не задан")
+# Вывод параметров в том же формате что и в оригинальном коде
+print("Имя пакета:", name_packege)
+print("URL:", url)
+print("Режим:", mode)
+print("Выходной файл:", output_file)
 print("ASCII дерево:", ascii_tree)
-print("Макс. глубина:", max_depth if max_depth else "не задан")
-print("Фильтр:", filter_value if filter_value else "не задан")
+print("Макс. глубина:", max_depth)
+print("Фильтр:", filter_value)
 
 print("\n=== Этап 2: Сбор данных о зависимостях ===")
 
-# Устанавливаем версию по умолчанию если не задана
-version_package = "1.0.0"
+# Для этапа 2 нам нужны только package, version и repository
+# Но в заданном формате нет version, поэтому используем фиксированную версию
+version_packege = "1.0.0"  # версия по умолчанию
 
-if not name_package:
-    print("Ошибка: Не задано имя пакета в config.yaml")
-    print("Пример правильного config.yaml:")
-    print("package: Newtonsoft.Json")
-    print("repository: https://api.nuget.org/v3/index.json")
-    print("mode: dependencies")
-elif not url:
-    print("Ошибка: Не задан URL репозитория в config.yaml")
+if not name_packege or not url:
+    print("Ошибка: Не заданы обязательные параметры (package, repository)")
 else:
-    print(f"Анализ пакета: {name_package} версии {version_package}")
-    print(f"Репозиторий: {url}")
-    
-    nuspec_content = get_nuspec(name_package, version_package, url)
+    nuspec_content = get_nuspec(name_packege, version_packege, url)
     if nuspec_content:
         dependencies = extract_dependencies(nuspec_content)
         if dependencies:
-            print(f"\nНайдены зависимости пакета {name_package} ({version_package}):")
-            for i, (dep_id, dep_ver) in enumerate(dependencies, 1):
-                print(f"  {i}. {dep_id} {dep_ver}")
-            
-            print(f"\nВсего зависимостей: {len(dependencies)}")
+            print(f"\nПрямые зависимости пакета {name_packege} ({version_packege}):")
+            for dep_id, dep_ver in dependencies:
+                print(f" - {dep_id} ({dep_ver})")
         else:
-            print(f"Пакет {name_package} не имеет зависимостей.")
-    else:
-        print("Не удалось получить данные о пакете")
-
-print("\n=== Демонстрация различных случаев ===")
-
-# Демонстрация работы с разными пакетами
-test_cases = [
-    {"name": "Newtonsoft.Json", "version": "13.0.1"},
-    {"name": "System.Text.Json", "version": "7.0.0"},
-    {"name": "Microsoft.EntityFrameworkCore", "version": "7.0.0"}
-]
-
-print("Тестовые случаи:")
-for i, case in enumerate(test_cases, 1):
-    print(f"{i}. Пакет: {case['name']}, Версия: {case['version']}")
-    test_content = get_nuspec(case['name'], case['version'], "https://api.nuget.org/v3/index.json")
-    if test_content:
-        deps = extract_dependencies(test_content)
-        print(f"   Зависимости: {len(deps)}")
-        for dep in deps[:2]:  # Показываем только первые 2 для краткости
-            print(f"     - {dep[0]} {dep[1]}")
-        if len(deps) > 2:
-            print(f"     ... и еще {len(deps) - 2} зависимостей")
-    print()
+            print(f"Пакет {name_packege} не имеет прямых зависимостей.")
